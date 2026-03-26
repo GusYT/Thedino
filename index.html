@@ -1,893 +1,212 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Overwatch Runner</title>
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Overwatch Runner</title>
 
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background: radial-gradient(circle at top, #1b1d28 0%, #0d0e13 65%);
-      font-family: Arial, sans-serif;
-      color: white;
-      padding: 16px;
-    }
+<style>
+body {
+  margin: 0;
+  background: #0d0e13;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-family: Arial;
+  color: white;
+}
 
-    .game-wrap {
-      width: min(1000px, 96vw);
-    }
-
-    .hud {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .title {
-      font-size: 1.4rem;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-    }
-
-    .score {
-      font-size: 1rem;
-      font-weight: 700;
-    }
-
-    canvas {
-      width: 100%;
-      height: auto;
-      display: block;
-      background: #151821;
-      border: 2px solid #ffffff;
-      border-radius: 12px;
-      touch-action: manipulation;
-      box-shadow: 0 14px 38px rgba(0,0,0,0.35);
-    }
-
-    .controls {
-      margin-top: 12px;
-      text-align: center;
-      color: #d0d0d0;
-      font-size: 0.95rem;
-      line-height: 1.5;
-    }
-
-    .buttons {
-      margin-top: 12px;
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-
-    button {
-      border: none;
-      background: #ffffff;
-      color: #111;
-      padding: 10px 16px;
-      border-radius: 10px;
-      font-size: 0.95rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: transform 0.12s ease, background 0.12s ease;
-    }
-
-    button:hover {
-      background: #ececec;
-      transform: translateY(-1px);
-    }
-
-    button:active {
-      transform: translateY(1px);
-    }
-  </style>
+canvas {
+  border: 2px solid white;
+  border-radius: 10px;
+}
+</style>
 </head>
+
 <body>
-  <div class="game-wrap">
-    <div class="hud">
-      <div class="title">Overwatch Runner</div>
-      <div class="score">Score: <span id="score">0</span></div>
-    </div>
 
-    <canvas id="game" width="1000" height="320"></canvas>
+<canvas id="game" width="1000" height="320"></canvas>
 
-    <div class="buttons">
-      <button id="startBtn">Start</button>
-      <button id="jumpBtn">Jump</button>
-      <button id="restartBtn">Restart</button>
-    </div>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-    <div class="controls">
-      <div><strong>Desktop:</strong> Space = Start / Jump / Restart, ↑ = Jump, R = Restart</div>
-      <div><strong>Mobile:</strong> Tap the game = Start / Jump / Restart</div>
-    </div>
-  </div>
+ctx.imageSmoothingEnabled = false;
 
-  <script>
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
-    const scoreEl = document.getElementById("score");
+const GROUND_Y = 250;
 
-    const startBtn = document.getElementById("startBtn");
-    const jumpBtn = document.getElementById("jumpBtn");
-    const restartBtn = document.getElementById("restartBtn");
+let speed = 6;
+let score = 0;
+let gameStarted = true;
+let gameOver = false;
 
-    ctx.imageSmoothingEnabled = false;
+const doomfistRun = new Image();
+doomfistRun.src = "pixilart-sprite.png";
 
-    const GROUND_Y = 250;
+const ana = new Image();
+ana.src = "Ana.png";
 
-    let score = 0;
-    let baseSpeed = 6;
-    let speed = baseSpeed;
-    let gameOver = false;
-    let gameStarted = false;
-    let spawnTimer = 0;
-    let groundOffset = 0;
-    let frame = 0;
+// SOUND
+const jumpSounds = [
+  new Audio("hey-there.mp3"),
+  new Audio("rising-uppercut.mp3")
+];
 
-    let shakeTime = 0;
-    let shakePower = 0;
-    let flashAlpha = 0;
+jumpSounds.forEach(s => s.volume = 0.5);
 
-    const doomfist = new Image();
-    doomfist.src = "Doomfist.png";
+function playRandomJumpSound() {
+  const original = jumpSounds[Math.floor(Math.random() * jumpSounds.length)];
+  const sound = original.cloneNode();
+  sound.volume = original.volume;
+  sound.play().catch(()=>{});
+}
 
-    const ana = new Image();
-    ana.src = "Ana.png";
+// SPRITE SETTINGS
+let runFrame = 0;
+let runTimer = 0;
 
-    const jumpSounds = [
-      new Audio("hey-there.mp3"),
-      new Audio("rising-uppercut.mp3")
-    ];
+const FRAME_WIDTH = 200;
+const FRAME_HEIGHT = 200;
+const TOTAL_FRAMES = 6;
 
-    jumpSounds.forEach(sound => {
-      sound.volume = 0.55;
-      sound.preload = "auto";
-    });
+const player = {
+  x: 90,
+  y: GROUND_Y - 100,
+  width: 100,
+  height: 100,
+  vy: 0,
+  gravity: 0.85,
+  jumpPower: -15.5,
+  grounded: true
+};
 
-    function playRandomJumpSound() {
-      const original = jumpSounds[Math.floor(Math.random() * jumpSounds.length)];
-      const sound = original.cloneNode();
-      sound.volume = original.volume;
-      sound.playbackRate = 0.98 + Math.random() * 0.06;
-      sound.play().catch(() => {});
+let enemies = [];
+
+function jump() {
+  if (player.grounded && !gameOver) {
+    player.vy = player.jumpPower;
+    player.grounded = false;
+    playRandomJumpSound();
+  }
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space") jump();
+});
+
+canvas.addEventListener("click", jump);
+
+function spawnEnemy() {
+  enemies.push({
+    x: canvas.width,
+    y: GROUND_Y - 74,
+    width: 58,
+    height: 74
+  });
+}
+
+function updatePlayer() {
+  player.vy += player.gravity;
+  player.y += player.vy;
+
+  if (player.y >= GROUND_Y - player.height) {
+    player.y = GROUND_Y - player.height;
+    player.vy = 0;
+    player.grounded = true;
+  }
+
+  // animation
+  if (player.grounded && !gameOver) {
+    runTimer++;
+    if (runTimer >= 5) {
+      runFrame = (runFrame + 1) % TOTAL_FRAMES;
+      runTimer = 0;
     }
+  } else {
+    runFrame = 0;
+  }
+}
 
-    const stars = Array.from({ length: 30 }, () => ({
-      x: Math.random() * canvas.width,
-      y: 20 + Math.random() * 110,
-      size: 1 + Math.random() * 2,
-      speed: 0.15 + Math.random() * 0.5
-    }));
+function updateEnemies() {
+  if (Math.random() < 0.02) spawnEnemy();
 
-    const farBuildings = Array.from({ length: 10 }, (_, i) => ({
-      x: i * 140,
-      w: 70 + Math.random() * 40,
-      h: 40 + Math.random() * 55
-    }));
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    enemies[i].x -= speed;
 
-    const nearBuildings = Array.from({ length: 9 }, (_, i) => ({
-      x: i * 165,
-      w: 90 + Math.random() * 45,
-      h: 65 + Math.random() * 75
-    }));
-
-    const player = {
-      x: 90,
-      y: GROUND_Y - 88,
-      width: 72,
-      height: 88,
-      vy: 0,
-      gravity: 0.85,
-      jumpPower: -15.5,
-      grounded: true,
-
-      runCycle: 0,
-      rotation: 0,
-      squashX: 1,
-      squashY: 1,
-      trailTimer: 0,
-      bob: 0,
-      dashLean: 0,
-      stepPulse: 0,
-      shadowScale: 1
-    };
-
-    let enemies = [];
-    let dustParticles = [];
-    let trails = [];
-
-    function resetPlayer() {
-      player.y = GROUND_Y - player.height;
-      player.vy = 0;
-      player.grounded = true;
-      player.runCycle = 0;
-      player.rotation = 0;
-      player.squashX = 1;
-      player.squashY = 1;
-      player.trailTimer = 0;
-      player.bob = 0;
-      player.dashLean = 0;
-      player.stepPulse = 0;
-      player.shadowScale = 1;
+    if (enemies[i].x + enemies[i].width < 0) {
+      enemies.splice(i, 1);
+      score++;
     }
+  }
+}
 
-    function resetGame() {
-      score = 0;
-      speed = baseSpeed;
-      gameOver = false;
-      gameStarted = false;
-      spawnTimer = 60;
-      groundOffset = 0;
-      enemies = [];
-      dustParticles = [];
-      trails = [];
-      frame = 0;
-      shakeTime = 0;
-      shakePower = 0;
-      flashAlpha = 0;
-      resetPlayer();
-      scoreEl.textContent = score;
+function checkCollision() {
+  for (const e of enemies) {
+    if (
+      player.x < e.x + e.width &&
+      player.x + player.width > e.x &&
+      player.y < e.y + e.height &&
+      player.y + player.height > e.y
+    ) {
+      gameOver = true;
     }
+  }
+}
+
+function drawGround() {
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, GROUND_Y, canvas.width, 2);
+}
+
+function drawPlayer() {
+  ctx.drawImage(
+    doomfistRun,
+    runFrame * FRAME_WIDTH, 0,
+    FRAME_WIDTH, FRAME_HEIGHT,
+    player.x,
+    player.y,
+    player.width,
+    player.height
+  );
+}
+
+function drawEnemies() {
+  enemies.forEach(e => {
+    ctx.drawImage(ana, e.x, e.y, e.width, e.height);
+  });
+}
+
+function drawScore() {
+  ctx.fillStyle = "#fff";
+  ctx.font = "20px Arial";
+  ctx.fillText("Score: " + score, 20, 30);
+
+  if (gameOver) {
+    ctx.font = "40px Arial";
+    ctx.fillText("GAME OVER", 350, 150);
+  }
+}
+
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!gameOver) {
+    updatePlayer();
+    updateEnemies();
+    checkCollision();
+  }
+
+  drawGround();
+  drawPlayer();
+  drawEnemies();
+  drawScore();
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
 
-    function startGame() {
-      score = 0;
-      speed = baseSpeed;
-      gameOver = false;
-      gameStarted = true;
-      spawnTimer = 60;
-      groundOffset = 0;
-      enemies = [];
-      dustParticles = [];
-      trails = [];
-      frame = 0;
-      shakeTime = 0;
-      shakePower = 0;
-      flashAlpha = 0;
-      resetPlayer();
-      scoreEl.textContent = score;
-    }
-
-    function restartGame() {
-      score = 0;
-      speed = baseSpeed;
-      gameOver = false;
-      gameStarted = true;
-      spawnTimer = 60;
-      groundOffset = 0;
-      enemies = [];
-      dustParticles = [];
-      trails = [];
-      frame = 0;
-      shakeTime = 0;
-      shakePower = 0;
-      flashAlpha = 0;
-      resetPlayer();
-      scoreEl.textContent = score;
-    }
-
-    function createDust(x, y, count = 4, strong = false) {
-      for (let i = 0; i < count; i++) {
-        dustParticles.push({
-          x,
-          y,
-          vx: -(1 + Math.random() * (strong ? 5 : 2.5)) - speed * 0.08,
-          vy: -Math.random() * (strong ? 2.5 : 1.2),
-          size: 2 + Math.random() * 4,
-          life: 18 + Math.random() * 16
-        });
-      }
-    }
-
-    function createTrail() {
-      trails.push({
-        x: player.x,
-        y: player.y + player.bob,
-        width: player.width * player.squashX,
-        height: player.height * player.squashY,
-        rotation: player.rotation,
-        alpha: 0.18
-      });
-    }
-
-    function triggerShake(power = 8, duration = 18) {
-      shakePower = power;
-      shakeTime = duration;
-    }
-
-    function jump() {
-      if (player.grounded && gameStarted && !gameOver) {
-        player.vy = player.jumpPower;
-        player.grounded = false;
-        player.squashX = 1.12;
-        player.squashY = 0.9;
-        createDust(player.x + 12, GROUND_Y - 4, 8, true);
-        playRandomJumpSound();
-      }
-    }
-
-    function spawnEnemy() {
-      enemies.push({
-        x: canvas.width + 30,
-        baseY: GROUND_Y - 74,
-        y: GROUND_Y - 74,
-        width: 58,
-        height: 74,
-        hoverTime: Math.random() * Math.PI * 2,
-        rotateTime: Math.random() * Math.PI * 2,
-        scaleX: 1,
-        scaleY: 1
-      });
-    }
-
-    function updatePlayer() {
-      const wasGrounded = player.grounded;
-
-      player.vy += player.gravity;
-      player.y += player.vy;
-
-      if (player.y >= GROUND_Y - player.height) {
-        player.y = GROUND_Y - player.height;
-        player.vy = 0;
-        player.grounded = true;
-
-        if (!wasGrounded) {
-          player.squashX = 1.2;
-          player.squashY = 0.82;
-          player.shadowScale = 1.2;
-          createDust(player.x + 16, GROUND_Y - 3, 10, true);
-        }
-      } else {
-        player.grounded = false;
-      }
-
-      if (player.grounded && gameStarted && !gameOver) {
-        player.runCycle += 0.28 + speed * 0.015;
-        player.stepPulse = Math.sin(player.runCycle);
-        player.bob = Math.abs(Math.sin(player.runCycle)) * -6;
-
-        const targetLean = 0.08 + Math.min(speed * 0.008, 0.16);
-        player.dashLean += (targetLean - player.dashLean) * 0.12;
-        player.rotation += (player.dashLean - player.rotation) * 0.16;
-
-        const stretchWave = Math.sin(player.runCycle * 2);
-        player.squashX += ((1.03 + stretchWave * 0.04) - player.squashX) * 0.18;
-        player.squashY += ((0.98 - stretchWave * 0.03) - player.squashY) * 0.18;
-        player.shadowScale += ((1 - Math.abs(Math.sin(player.runCycle)) * 0.12) - player.shadowScale) * 0.18;
-
-        if (frame % 8 === 0) {
-          createDust(player.x + 6, GROUND_Y - 2, 2, false);
-        }
-      } else {
-        player.bob = 0;
-        player.dashLean += (0 - player.dashLean) * 0.1;
-
-        const airRotation = Math.max(-0.24, Math.min(0.2, player.vy * 0.018));
-        player.rotation += (airRotation - player.rotation) * 0.18;
-
-        player.squashX += (1 - player.squashX) * 0.16;
-        player.squashY += (1 - player.squashY) * 0.16;
-        player.shadowScale += (0.78 - player.shadowScale) * 0.12;
-      }
-
-      if (gameStarted && !gameOver && speed > 9 && player.grounded) {
-        player.trailTimer++;
-        if (player.trailTimer >= 3) {
-          createTrail();
-          player.trailTimer = 0;
-        }
-      } else {
-        player.trailTimer = 0;
-      }
-    }
-
-    function updateEnemies() {
-      spawnTimer--;
-
-      if (spawnTimer <= 0) {
-        spawnEnemy();
-
-        const minSpawn = 55;
-        const maxSpawn = 95;
-        const speedFactor = Math.min((speed - baseSpeed) * 3, 25);
-
-        spawnTimer = Math.floor(
-          minSpawn + Math.random() * (maxSpawn - minSpawn) - speedFactor
-        );
-
-        if (spawnTimer < 38) {
-          spawnTimer = 38;
-        }
-      }
-
-      for (let i = enemies.length - 1; i >= 0; i--) {
-        const enemy = enemies[i];
-        enemy.x -= speed;
-        enemy.hoverTime += 0.08;
-        enemy.rotateTime += 0.06;
-
-        enemy.y = enemy.baseY + Math.sin(enemy.hoverTime) * 4;
-        enemy.scaleX = 1 + Math.sin(enemy.hoverTime * 1.2) * 0.035;
-        enemy.scaleY = 1 - Math.sin(enemy.hoverTime * 1.2) * 0.025;
-
-        if (enemy.x + enemy.width < 0) {
-          enemies.splice(i, 1);
-          score++;
-        }
-      }
-    }
-
-    function updateDust() {
-      for (let i = dustParticles.length - 1; i >= 0; i--) {
-        const p = dustParticles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.05;
-        p.life--;
-
-        if (p.life <= 0) {
-          dustParticles.splice(i, 1);
-        }
-      }
-    }
-
-    function updateTrails() {
-      for (let i = trails.length - 1; i >= 0; i--) {
-        trails[i].alpha -= 0.03;
-        trails[i].x -= speed * 0.2;
-
-        if (trails[i].alpha <= 0) {
-          trails.splice(i, 1);
-        }
-      }
-    }
-
-    function updateGround() {
-      groundOffset += speed;
-      if (groundOffset >= 36) {
-        groundOffset = 0;
-      }
-    }
-
-    function updateStars() {
-      for (const star of stars) {
-        star.x -= star.speed + speed * 0.03;
-        if (star.x < -5) {
-          star.x = canvas.width + 5;
-          star.y = 20 + Math.random() * 110;
-        }
-      }
-    }
-
-    function checkCollision() {
-      const hitbox = {
-        x: player.x + 14,
-        y: player.y + 10,
-        width: player.width - 28,
-        height: player.height - 12
-      };
-
-      for (const enemy of enemies) {
-        const enemyBox = {
-          x: enemy.x + 10,
-          y: enemy.y + 8,
-          width: enemy.width - 20,
-          height: enemy.height - 10
-        };
-
-        const hit =
-          hitbox.x < enemyBox.x + enemyBox.width &&
-          hitbox.x + hitbox.width > enemyBox.x &&
-          hitbox.y < enemyBox.y + enemyBox.height &&
-          hitbox.y + hitbox.height > enemyBox.y;
-
-        if (hit) {
-          gameOver = true;
-          createDust(player.x + player.width / 2, player.y + player.height / 2, 16, true);
-          triggerShake(10, 22);
-          flashAlpha = 0.45;
-          break;
-        }
-      }
-    }
-
-    function drawSky() {
-      const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      sky.addColorStop(0, "#121522");
-      sky.addColorStop(0.7, "#181c28");
-      sky.addColorStop(1, "#1c2029");
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      for (const star of stars) {
-        ctx.globalAlpha = 0.4 + Math.sin(frame * 0.03 + star.x * 0.01) * 0.2;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(star.x, star.y, star.size, star.size);
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    function drawParallax() {
-      const farOffset = (frame * (speed * 0.18)) % 140;
-      const nearOffset = (frame * (speed * 0.38)) % 165;
-
-      ctx.fillStyle = "#252b38";
-      for (const b of farBuildings) {
-        ctx.fillRect(b.x - farOffset, GROUND_Y - b.h, b.w, b.h);
-        ctx.fillRect(b.x - farOffset + 1400, GROUND_Y - b.h, b.w, b.h);
-      }
-
-      ctx.fillStyle = "#303748";
-      for (const b of nearBuildings) {
-        ctx.fillRect(b.x - nearOffset, GROUND_Y - b.h, b.w, b.h);
-        ctx.fillRect(b.x - nearOffset + 1485, GROUND_Y - b.h, b.w, b.h);
-      }
-    }
-
-    function drawSpeedLines() {
-      if (!gameStarted || gameOver) return;
-
-      const amount = Math.min(8 + Math.floor(speed), 18);
-      ctx.globalAlpha = Math.min(0.08 + (speed - baseSpeed) * 0.015, 0.22);
-
-      for (let i = 0; i < amount; i++) {
-        const y = 25 + (i * 15) % 140;
-        const x = (frame * (8 + speed) + i * 73) % (canvas.width + 120);
-        const length = 24 + (i % 4) * 16;
-        ctx.fillStyle = "#dfe6ff";
-        ctx.fillRect(canvas.width - x, y, length, 2);
-      }
-
-      ctx.globalAlpha = 1;
-    }
-
-    function drawGround() {
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, GROUND_Y);
-      ctx.lineTo(canvas.width, GROUND_Y);
-      ctx.stroke();
-
-      ctx.fillStyle = "#8f8f8f";
-      for (let i = -36; i < canvas.width + 36; i += 36) {
-        ctx.fillRect(i - groundOffset, GROUND_Y + 10, 18, 3);
-      }
-
-      ctx.globalAlpha = 0.12;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, GROUND_Y + 1, canvas.width, 2);
-      ctx.globalAlpha = 1;
-    }
-
-    function drawDust() {
-      for (const p of dustParticles) {
-        ctx.globalAlpha = Math.max(0, p.life / 34) * 0.8;
-        ctx.fillStyle = "#d6d6d6";
-        ctx.fillRect(p.x, p.y, p.size, p.size);
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    function drawPlayerShadow() {
-      const shadowWidth = player.width * 0.9 * player.shadowScale;
-      const shadowHeight = 10 * (2 - player.shadowScale);
-
-      ctx.save();
-      ctx.globalAlpha = 0.22;
-      ctx.fillStyle = "#000";
-      ctx.beginPath();
-      ctx.ellipse(
-        player.x + player.width / 2,
-        GROUND_Y + 4,
-        shadowWidth / 2,
-        Math.max(4, shadowHeight / 2),
-        0,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-      ctx.restore();
-    }
-
-    function drawPlayerImage(x, y, w, h, rotation, alpha = 1) {
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.translate(x + w / 2, y + h / 2);
-      ctx.rotate(rotation);
-
-      if (doomfist.complete && doomfist.naturalWidth > 0) {
-        const run = player.grounded && gameStarted && !gameOver
-          ? Math.sin(player.runCycle * 2.2)
-          : 0;
-
-        const run2 = player.grounded && gameStarted && !gameOver
-          ? Math.sin(player.runCycle * 4.4)
-          : 0;
-
-        const srcW = doomfist.naturalWidth;
-        const srcH = doomfist.naturalHeight;
-
-        const dx = -w / 2;
-        const dy = -h / 2;
-
-        const slices = [
-          { sy: 0.00, sh: 0.18, ox: run * 1.5, oy: 0 },
-          { sy: 0.18, sh: 0.16, ox: run * 3.5, oy: -Math.abs(run) * 1 },
-          { sy: 0.34, sh: 0.18, ox: run * 2.2, oy: 0 },
-          { sy: 0.52, sh: 0.14, ox: -run * 2.5, oy: Math.abs(run) * 1 },
-          { sy: 0.66, sh: 0.17, ox: run * 4.5, oy: 0 },
-          { sy: 0.83, sh: 0.17, ox: -run * 5.5, oy: 0 }
-        ];
-
-        for (const s of slices) {
-          const sy = srcH * s.sy;
-          const sh = srcH * s.sh;
-          const dh = h * s.sh;
-          const dySlice = dy + h * s.sy;
-
-          ctx.drawImage(
-            doomfist,
-            0, sy, srcW, sh,
-            dx + s.ox + run2 * 0.3,
-            dySlice + s.oy,
-            w,
-            dh
-          );
-        }
-
-        if (player.grounded && gameStarted && !gameOver) {
-          ctx.globalAlpha = alpha * 0.12;
-          ctx.drawImage(doomfist, dx - 8 - run * 2, dy + 2, w, h);
-
-          ctx.globalAlpha = alpha * 0.08;
-          ctx.drawImage(doomfist, dx - 15 - run * 3, dy + 4, w, h);
-        }
-      } else {
-        ctx.fillStyle = "#f0b";
-        ctx.fillRect(-w / 2, -h / 2, w, h);
-      }
-
-      ctx.restore();
-      ctx.globalAlpha = 1;
-    }
-
-    function drawTrails() {
-      for (const t of trails) {
-        drawPlayerImage(t.x, t.y, t.width, t.height, t.rotation, t.alpha);
-      }
-    }
-
-    function drawPlayer() {
-      drawPlayerShadow();
-
-      let drawW = player.width * player.squashX;
-      let drawH = player.height * player.squashY;
-
-      const stride = player.grounded && gameStarted && !gameOver
-        ? Math.sin(player.runCycle)
-        : 0;
-
-      drawW *= 1 + Math.abs(stride) * 0.04;
-      drawH *= 1 - Math.abs(stride) * 0.03;
-
-      const drawX = player.x;
-      const drawY = player.y + player.bob;
-
-      if (speed > 10 && player.grounded && gameStarted && !gameOver) {
-        drawPlayerImage(drawX - 10, drawY + 2, drawW, drawH, player.rotation, 0.12);
-        drawPlayerImage(drawX - 18, drawY + 4, drawW, drawH, player.rotation, 0.06);
-      }
-
-      drawPlayerImage(drawX, drawY, drawW, drawH, player.rotation, 1);
-    }
-
-    function drawEnemies() {
-      for (const enemy of enemies) {
-        const w = enemy.width * enemy.scaleX;
-        const h = enemy.height * enemy.scaleY;
-        const rot = Math.sin(enemy.rotateTime) * 0.035;
-
-        ctx.save();
-        ctx.translate(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-        ctx.rotate(rot);
-
-        if (ana.complete && ana.naturalWidth > 0) {
-          ctx.drawImage(ana, -w / 2, -h / 2, w, h);
-        } else {
-          ctx.fillStyle = "#6cf";
-          ctx.fillRect(-w / 2, -h / 2, w, h);
-        }
-
-        ctx.restore();
-      }
-    }
-
-    function drawOverlay() {
-      ctx.textAlign = "center";
-
-      if (!gameStarted) {
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fillRect(canvas.width / 2 - 230, 70, 460, 120);
-
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 30px Arial";
-        ctx.fillText("Overwatch Runner", canvas.width / 2, 110);
-
-        ctx.font = "18px Arial";
-        ctx.fillText("Press Space or tap to start", canvas.width / 2, 145);
-      }
-
-      if (gameOver) {
-        const pulse = 0.62 + Math.sin(frame * 0.08) * 0.06;
-
-        ctx.fillStyle = `rgba(0,0,0,${pulse})`;
-        ctx.fillRect(canvas.width / 2 - 180, 80, 360, 110);
-
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 30px Arial";
-        ctx.fillText("GAME OVER", canvas.width / 2, 120);
-
-        ctx.font = "18px Arial";
-        ctx.fillText("Press R, Space, or tap to restart", canvas.width / 2, 155);
-      }
-    }
-
-    function drawFlash() {
-      if (flashAlpha <= 0) return;
-      ctx.globalAlpha = flashAlpha;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.globalAlpha = 1;
-    }
-
-    function drawScore() {
-      scoreEl.textContent = score;
-    }
-
-    function beginCamera() {
-      ctx.save();
-
-      if (shakeTime > 0) {
-        const dx = (Math.random() - 0.5) * shakePower;
-        const dy = (Math.random() - 0.5) * shakePower;
-        ctx.translate(dx, dy);
-      }
-    }
-
-    function endCamera() {
-      ctx.restore();
-    }
-
-    function updateEffects() {
-      if (shakeTime > 0) {
-        shakeTime--;
-        shakePower *= 0.9;
-      }
-
-      if (flashAlpha > 0) {
-        flashAlpha *= 0.9;
-        if (flashAlpha < 0.01) flashAlpha = 0;
-      }
-    }
-
-    function renderScene() {
-      drawSky();
-      drawSpeedLines();
-      drawParallax();
-      drawGround();
-      drawDust();
-      drawTrails();
-      drawPlayer();
-      drawEnemies();
-      drawOverlay();
-      drawFlash();
-    }
-
-    function gameLoop() {
-      frame++;
-
-      if (gameStarted && !gameOver) {
-        speed += 0.003;
-        speed = Math.min(speed, 14);
-
-        updateStars();
-        updatePlayer();
-        updateEnemies();
-        updateDust();
-        updateTrails();
-        updateGround();
-        checkCollision();
-      } else {
-        updateStars();
-        updateDust();
-        updateTrails();
-      }
-
-      updateEffects();
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      beginCamera();
-      renderScene();
-      endCamera();
-      drawScore();
-
-      requestAnimationFrame(gameLoop);
-    }
-
-    function handleCanvasTap() {
-      if (!gameStarted) {
-        startGame();
-        return;
-      }
-
-      if (gameOver) {
-        restartGame();
-        return;
-      }
-
-      jump();
-    }
-
-    document.addEventListener("keydown", (e) => {
-      if (e.code === "Space") {
-        e.preventDefault();
-
-        if (!gameStarted) {
-          startGame();
-        } else if (gameOver) {
-          restartGame();
-        } else {
-          jump();
-        }
-      }
-
-      if (e.code === "ArrowUp") {
-        e.preventDefault();
-        if (gameStarted && !gameOver) {
-          jump();
-        }
-      }
-
-      if (e.code === "KeyR") {
-        restartGame();
-      }
-    });
-
-    canvas.addEventListener("pointerdown", handleCanvasTap);
-
-    startBtn.addEventListener("click", () => {
-      if (!gameStarted) {
-        startGame();
-      } else if (gameOver) {
-        restartGame();
-      }
-    });
-
-    jumpBtn.addEventListener("click", () => {
-      if (gameStarted && !gameOver) {
-        jump();
-      }
-    });
-
-    restartBtn.addEventListener("click", () => {
-      restartGame();
-    });
-
-    resetGame();
-    gameLoop();
-  </script>
 </body>
 </html>
