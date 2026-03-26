@@ -1,212 +1,495 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Overwatch Runner</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Overwatch Runner</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
 
-<style>
-body {
-  margin: 0;
-  background: #0d0e13;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  font-family: Arial;
-  color: white;
-}
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #0f0f12;
+      font-family: Arial, sans-serif;
+      color: white;
+      padding: 16px;
+    }
 
-canvas {
-  border: 2px solid white;
-  border-radius: 10px;
-}
-</style>
+    .game-wrap {
+      width: min(1000px, 96vw);
+    }
+
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .title {
+      font-size: 1.4rem;
+      font-weight: 700;
+    }
+
+    .score {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #1a1a1f;
+      border: 2px solid #ffffff;
+      border-radius: 12px;
+      touch-action: manipulation;
+    }
+
+    .controls {
+      margin-top: 12px;
+      text-align: center;
+      color: #cfcfcf;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .buttons {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      background: #ffffff;
+      color: #111;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #e9e9e9;
+    }
+  </style>
 </head>
-
 <body>
+  <div class="game-wrap">
+    <div class="hud">
+      <div class="title">Overwatch Runner</div>
+      <div class="score">Score: <span id="score">0</span></div>
+    </div>
 
-<canvas id="game" width="1000" height="320"></canvas>
+    <canvas id="game" width="1000" height="320"></canvas>
 
-<script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+    <div class="buttons">
+      <button id="startBtn">Start</button>
+      <button id="jumpBtn">Jump</button>
+      <button id="restartBtn">Restart</button>
+    </div>
 
-ctx.imageSmoothingEnabled = false;
+    <div class="controls">
+      <div><strong>Desktop:</strong> Space = Start / Jump / Restart, ↑ = Jump, R = Restart</div>
+      <div><strong>Mobile:</strong> Tap the game = Start / Jump / Restart</div>
+    </div>
+  </div>
 
-const GROUND_Y = 250;
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
 
-let speed = 6;
-let score = 0;
-let gameStarted = true;
-let gameOver = false;
+    const startBtn = document.getElementById("startBtn");
+    const jumpBtn = document.getElementById("jumpBtn");
+    const restartBtn = document.getElementById("restartBtn");
 
-const doomfistRun = new Image();
-doomfistRun.src = "pixilart-sprite.png";
+    ctx.imageSmoothingEnabled = false;
 
-const ana = new Image();
-ana.src = "Ana.png";
+    const GROUND_Y = 250;
 
-// SOUND
-const jumpSounds = [
-  new Audio("hey-there.mp3"),
-  new Audio("rising-uppercut.mp3")
-];
+    let score = 0;
+    let baseSpeed = 6;
+    let speed = baseSpeed;
+    let gameOver = false;
+    let gameStarted = false;
+    let spawnTimer = 0;
+    let groundOffset = 0;
 
-jumpSounds.forEach(s => s.volume = 0.5);
+    const doomfistRun = new Image();
+    doomfistRun.src = "pixilart-sprite.png";
 
-function playRandomJumpSound() {
-  const original = jumpSounds[Math.floor(Math.random() * jumpSounds.length)];
-  const sound = original.cloneNode();
-  sound.volume = original.volume;
-  sound.play().catch(()=>{});
-}
+    const ana = new Image();
+    ana.src = "Ana.png";
 
-// SPRITE SETTINGS
-let runFrame = 0;
-let runTimer = 0;
+    const jumpSounds = [
+      new Audio("hey-there.mp3"),
+      new Audio("rising-uppercut.mp3")
+    ];
 
-const FRAME_WIDTH = 200;
-const FRAME_HEIGHT = 200;
-const TOTAL_FRAMES = 6;
+    jumpSounds.forEach(sound => {
+      sound.volume = 0.5;
+      sound.preload = "auto";
+    });
 
-const player = {
-  x: 90,
-  y: GROUND_Y - 100,
-  width: 100,
-  height: 100,
-  vy: 0,
-  gravity: 0.85,
-  jumpPower: -15.5,
-  grounded: true
-};
+    function playRandomJumpSound() {
+      const original = jumpSounds[Math.floor(Math.random() * jumpSounds.length)];
+      const s = original.cloneNode();
+      s.volume = original.volume;
+      s.play().catch(() => {});
+    }
 
-let enemies = [];
+    const FRAME_WIDTH = 200;
+    const FRAME_HEIGHT = 200;
+    const TOTAL_FRAMES = 6;
+    let runFrame = 0;
+    let runTimer = 0;
 
-function jump() {
-  if (player.grounded && !gameOver) {
-    player.vy = player.jumpPower;
-    player.grounded = false;
-    playRandomJumpSound();
-  }
-}
+    const player = {
+      x: 90,
+      y: GROUND_Y - 88,
+      width: 88,
+      height: 88,
+      vy: 0,
+      gravity: 0.85,
+      jumpPower: -15.5,
+      grounded: true
+    };
 
-document.addEventListener("keydown", (e) => {
-  if (e.code === "Space") jump();
-});
+    let enemies = [];
 
-canvas.addEventListener("click", jump);
-
-function spawnEnemy() {
-  enemies.push({
-    x: canvas.width,
-    y: GROUND_Y - 74,
-    width: 58,
-    height: 74
-  });
-}
-
-function updatePlayer() {
-  player.vy += player.gravity;
-  player.y += player.vy;
-
-  if (player.y >= GROUND_Y - player.height) {
-    player.y = GROUND_Y - player.height;
-    player.vy = 0;
-    player.grounded = true;
-  }
-
-  // animation
-  if (player.grounded && !gameOver) {
-    runTimer++;
-    if (runTimer >= 5) {
-      runFrame = (runFrame + 1) % TOTAL_FRAMES;
+    function resetPlayer() {
+      player.y = GROUND_Y - player.height;
+      player.vy = 0;
+      player.grounded = true;
+      runFrame = 0;
       runTimer = 0;
     }
-  } else {
-    runFrame = 0;
-  }
-}
 
-function updateEnemies() {
-  if (Math.random() < 0.02) spawnEnemy();
-
-  for (let i = enemies.length - 1; i >= 0; i--) {
-    enemies[i].x -= speed;
-
-    if (enemies[i].x + enemies[i].width < 0) {
-      enemies.splice(i, 1);
-      score++;
+    function resetGame() {
+      score = 0;
+      speed = baseSpeed;
+      gameOver = false;
+      gameStarted = false;
+      spawnTimer = 60;
+      groundOffset = 0;
+      enemies = [];
+      resetPlayer();
+      scoreEl.textContent = score;
     }
-  }
-}
 
-function checkCollision() {
-  for (const e of enemies) {
-    if (
-      player.x < e.x + e.width &&
-      player.x + player.width > e.x &&
-      player.y < e.y + e.height &&
-      player.y + player.height > e.y
-    ) {
-      gameOver = true;
+    function startGame() {
+      score = 0;
+      speed = baseSpeed;
+      gameOver = false;
+      gameStarted = true;
+      spawnTimer = 60;
+      groundOffset = 0;
+      enemies = [];
+      resetPlayer();
+      scoreEl.textContent = score;
     }
-  }
-}
 
-function drawGround() {
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, GROUND_Y, canvas.width, 2);
-}
+    function restartGame() {
+      score = 0;
+      speed = baseSpeed;
+      gameOver = false;
+      gameStarted = true;
+      spawnTimer = 60;
+      groundOffset = 0;
+      enemies = [];
+      resetPlayer();
+      scoreEl.textContent = score;
+    }
 
-function drawPlayer() {
-  ctx.drawImage(
-    doomfistRun,
-    runFrame * FRAME_WIDTH, 0,
-    FRAME_WIDTH, FRAME_HEIGHT,
-    player.x,
-    player.y,
-    player.width,
-    player.height
-  );
-}
+    function jump() {
+      if (player.grounded && gameStarted && !gameOver) {
+        player.vy = player.jumpPower;
+        player.grounded = false;
+        playRandomJumpSound();
+      }
+    }
 
-function drawEnemies() {
-  enemies.forEach(e => {
-    ctx.drawImage(ana, e.x, e.y, e.width, e.height);
-  });
-}
+    function spawnEnemy() {
+      enemies.push({
+        x: canvas.width + 30,
+        y: GROUND_Y - 74,
+        width: 58,
+        height: 74
+      });
+    }
 
-function drawScore() {
-  ctx.fillStyle = "#fff";
-  ctx.font = "20px Arial";
-  ctx.fillText("Score: " + score, 20, 30);
+    function updatePlayer() {
+      player.vy += player.gravity;
+      player.y += player.vy;
 
-  if (gameOver) {
-    ctx.font = "40px Arial";
-    ctx.fillText("GAME OVER", 350, 150);
-  }
-}
+      if (player.y >= GROUND_Y - player.height) {
+        player.y = GROUND_Y - player.height;
+        player.vy = 0;
+        player.grounded = true;
+      }
 
-function gameLoop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (player.grounded && gameStarted && !gameOver) {
+        runTimer++;
+        const frameDelay = Math.max(3, 6 - Math.floor((speed - baseSpeed) * 0.4));
+        if (runTimer >= frameDelay) {
+          runFrame = (runFrame + 1) % TOTAL_FRAMES;
+          runTimer = 0;
+        }
+      } else {
+        runFrame = 0;
+        runTimer = 0;
+      }
+    }
 
-  if (!gameOver) {
-    updatePlayer();
-    updateEnemies();
-    checkCollision();
-  }
+    function updateEnemies() {
+      spawnTimer--;
 
-  drawGround();
-  drawPlayer();
-  drawEnemies();
-  drawScore();
+      if (spawnTimer <= 0) {
+        spawnEnemy();
 
-  requestAnimationFrame(gameLoop);
-}
+        const minSpawn = 55;
+        const maxSpawn = 95;
+        const speedFactor = Math.min((speed - baseSpeed) * 3, 25);
 
-gameLoop();
-</script>
+        spawnTimer = Math.floor(
+          minSpawn + Math.random() * (maxSpawn - minSpawn) - speedFactor
+        );
 
+        if (spawnTimer < 38) {
+          spawnTimer = 38;
+        }
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        enemies[i].x -= speed;
+
+        if (enemies[i].x + enemies[i].width < 0) {
+          enemies.splice(i, 1);
+          score++;
+        }
+      }
+    }
+
+    function updateGround() {
+      groundOffset += speed;
+      if (groundOffset >= 36) {
+        groundOffset = 0;
+      }
+    }
+
+    function checkCollision() {
+      const hitbox = {
+        x: player.x + 16,
+        y: player.y + 10,
+        width: player.width - 32,
+        height: player.height - 12
+      };
+
+      for (const enemy of enemies) {
+        const enemyBox = {
+          x: enemy.x + 10,
+          y: enemy.y + 8,
+          width: enemy.width - 20,
+          height: enemy.height - 10
+        };
+
+        const hit =
+          hitbox.x < enemyBox.x + enemyBox.width &&
+          hitbox.x + hitbox.width > enemyBox.x &&
+          hitbox.y < enemyBox.y + enemyBox.height &&
+          hitbox.y + hitbox.height > enemyBox.y;
+
+        if (hit) {
+          gameOver = true;
+          break;
+        }
+      }
+    }
+
+    function drawBackground() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#1a1a1f";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, GROUND_Y);
+      ctx.lineTo(canvas.width, GROUND_Y);
+      ctx.stroke();
+
+      ctx.fillStyle = "#888";
+      for (let i = -36; i < canvas.width + 36; i += 36) {
+        ctx.fillRect(i - groundOffset, GROUND_Y + 10, 18, 3);
+      }
+    }
+
+    function drawPlayer() {
+      if (doomfistRun.complete && doomfistRun.naturalWidth > 0) {
+        ctx.drawImage(
+          doomfistRun,
+          runFrame * FRAME_WIDTH,
+          0,
+          FRAME_WIDTH,
+          FRAME_HEIGHT,
+          player.x,
+          player.y,
+          player.width,
+          player.height
+        );
+      } else {
+        ctx.fillStyle = "#f0b";
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+      }
+    }
+
+    function drawEnemies() {
+      for (const enemy of enemies) {
+        if (ana.complete && ana.naturalWidth > 0) {
+          ctx.drawImage(
+            ana,
+            enemy.x,
+            enemy.y,
+            enemy.width,
+            enemy.height
+          );
+        } else {
+          ctx.fillStyle = "#6cf";
+          ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+        }
+      }
+    }
+
+    function drawOverlay() {
+      ctx.textAlign = "center";
+
+      if (!gameStarted) {
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(canvas.width / 2 - 230, 70, 460, 120);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 30px Arial";
+        ctx.fillText("Overwatch Runner", canvas.width / 2, 110);
+
+        ctx.font = "18px Arial";
+        ctx.fillText("Press Space or tap to start", canvas.width / 2, 145);
+      }
+
+      if (gameOver) {
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        ctx.fillRect(canvas.width / 2 - 180, 80, 360, 110);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 30px Arial";
+        ctx.fillText("GAME OVER", canvas.width / 2, 120);
+
+        ctx.font = "18px Arial";
+        ctx.fillText("Press R, Space, or tap to restart", canvas.width / 2, 155);
+      }
+    }
+
+    function drawScore() {
+      scoreEl.textContent = score;
+    }
+
+    function gameLoop() {
+      drawBackground();
+
+      if (gameStarted && !gameOver) {
+        speed += 0.003;
+        speed = Math.min(speed, 14);
+
+        updatePlayer();
+        updateEnemies();
+        updateGround();
+        checkCollision();
+      }
+
+      drawPlayer();
+      drawEnemies();
+      drawOverlay();
+      drawScore();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function handleCanvasTap() {
+      if (!gameStarted) {
+        startGame();
+        return;
+      }
+
+      if (gameOver) {
+        restartGame();
+        return;
+      }
+
+      jump();
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+
+        if (!gameStarted) {
+          startGame();
+        } else if (gameOver) {
+          restartGame();
+        } else {
+          jump();
+        }
+      }
+
+      if (e.code === "ArrowUp") {
+        e.preventDefault();
+        if (gameStarted && !gameOver) {
+          jump();
+        }
+      }
+
+      if (e.code === "KeyR") {
+        restartGame();
+      }
+    });
+
+    canvas.addEventListener("pointerdown", () => {
+      handleCanvasTap();
+    });
+
+    startBtn.addEventListener("click", () => {
+      if (!gameStarted) {
+        startGame();
+      } else if (gameOver) {
+        restartGame();
+      }
+    });
+
+    jumpBtn.addEventListener("click", () => {
+      if (gameStarted && !gameOver) {
+        jump();
+      }
+    });
+
+    restartBtn.addEventListener("click", () => {
+      restartGame();
+    });
+
+    resetGame();
+    gameLoop();
+  </script>
 </body>
 </html>
