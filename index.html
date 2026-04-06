@@ -155,22 +155,23 @@
     const SHEET_FRAME_HEIGHT = 900;
     const TOTAL_FRAMES = 6;
 
-    const SPRITE_CROP_X = 90;
-    const SPRITE_CROP_Y = 70;
-    const SPRITE_CROP_WIDTH = 300;
-    const SPRITE_CROP_HEIGHT = 420;
+    // Adjusted crop: more centered, less giant left-arm dominance
+    const SPRITE_CROP_X = 140;
+    const SPRITE_CROP_Y = 40;
+    const SPRITE_CROP_WIDTH = 560;
+    const SPRITE_CROP_HEIGHT = 720;
 
     let runFrame = 0;
     let runTimer = 0;
 
     const player = {
-      x: 80,
-      y: GROUND_Y - 145,
-      width: 110,
-      height: 145,
+      x: 90,
+      y: GROUND_Y - 120,
+      width: 95,
+      height: 120,
       vy: 0,
       gravity: 0.85,
-      jumpPower: -18,
+      jumpPower: -17.5,
       grounded: true
     };
 
@@ -298,10 +299,10 @@
 
     function checkCollision() {
       const hitbox = {
-        x: player.x + 22,
-        y: player.y + 18,
-        width: player.width - 44,
-        height: player.height - 26
+        x: player.x + 18,
+        y: player.y + 14,
+        width: player.width - 36,
+        height: player.height - 20
       };
 
       for (const enemy of enemies) {
