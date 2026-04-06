@@ -151,17 +151,23 @@
       s.play().catch(() => {});
     }
 
-    const FRAME_WIDTH = 200;
-    const FRAME_HEIGHT = 200;
+    const SHEET_FRAME_WIDTH = 900;
+    const SHEET_FRAME_HEIGHT = 900;
     const TOTAL_FRAMES = 6;
+
+    const SPRITE_CROP_X = 90;
+    const SPRITE_CROP_Y = 70;
+    const SPRITE_CROP_WIDTH = 300;
+    const SPRITE_CROP_HEIGHT = 420;
+
     let runFrame = 0;
     let runTimer = 0;
 
     const player = {
-      x: 70,
-      y: GROUND_Y - 150,
-      width: 150,
-      height: 150,
+      x: 80,
+      y: GROUND_Y - 145,
+      width: 110,
+      height: 145,
       vy: 0,
       gravity: 0.85,
       jumpPower: -18,
@@ -292,10 +298,10 @@
 
     function checkCollision() {
       const hitbox = {
-        x: player.x + 30,
+        x: player.x + 22,
         y: player.y + 18,
-        width: player.width - 60,
-        height: player.height - 24
+        width: player.width - 44,
+        height: player.height - 26
       };
 
       for (const enemy of enemies) {
@@ -342,10 +348,10 @@
       if (doomfistRun.complete && doomfistRun.naturalWidth > 0) {
         ctx.drawImage(
           doomfistRun,
-          runFrame * FRAME_WIDTH,
-          0,
-          FRAME_WIDTH,
-          FRAME_HEIGHT,
+          runFrame * SHEET_FRAME_WIDTH + SPRITE_CROP_X,
+          SPRITE_CROP_Y,
+          SPRITE_CROP_WIDTH,
+          SPRITE_CROP_HEIGHT,
           player.x,
           player.y,
           player.width,
@@ -466,9 +472,7 @@
       }
     });
 
-    canvas.addEventListener("pointerdown", () => {
-      handleCanvasTap();
-    });
+    canvas.addEventListener("pointerdown", handleCanvasTap);
 
     startBtn.addEventListener("click", () => {
       if (!gameStarted) {
